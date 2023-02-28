@@ -1,0 +1,139 @@
+import numpy as np
+import random
+import time 
+from statistics import mean
+
+# import pyautogui
+import paho.mqtt.client as mqtt
+
+def mate(one,two):
+
+    child_chromosome = []
+    # child=[]
+    # for key, weight in top_three:
+    #     # tuple to list
+    #     child.append(weight)
+
+    model1_weights= one
+    model2_weights= two
+
+    for gp1, gp2 in zip(model1_weights, model2_weights):  
+        # random probability
+        prob = random.random()
+        print(prob)
+        if prob < 0.55:
+            child_chromosome.append(gp1)
+        else:
+            child_chromosome.append(gp2)
+    #   mutation 
+    for i in range(len(child_chromosome)):
+        for j in range(len(child_chromosome[i])):
+          child_chromosome[i][j] += np.random.normal(0, 0.1)
+          return child_chromosome
+
+def network(weight, input):
+    input_layer = tf.keras.layers.Input(shape=(3,))
+    hidden_layer_1 = tf.keras.layers.Dense(6, activation='relu')(input_layer)
+    output_layer = tf.keras.layers.Dense(3, activation='softmax')(hidden_layer_1)
+    model = tf.keras.models.Model(inputs=input_layer, outputs=output_layer)
+    model.set_weights(weight)    
+    # model.set_weights(weight)
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    
+    arr = np.array(model.predict(input))
+    max_index = np.argmax(arr)
+
+    # print(max_index)
+    return max_index
+
+
+population=[]
+new_gen=[]
+result_dict={}
+
+def weight_make():
+        w1=np.random.randn(3,6).astype(np.float32)
+        w2=np.random.randn(6, 3).astype(np.float32)
+
+        # pop= [w1,np.random.randn(8).astype(np.float32),
+              # w2,np.random.randn(3).astype(np.float32)]
+        pop = [w1,np.array([0., 0., 0., 0., 0., 0.], dtype=np.float32),
+                w2,np.array([0., 0., 0.], dtype=np.float32)]
+        return pop 
+
+broker= "mqtt.eclipseprojects.io"
+port = 1883
+topic = "topic"
+
+client = mqtt.Client()
+client.connect(broker,port)
+
+client.subscribe(topic)
+
+
+for _ in range(20):
+  population.append(weight_make())
+
+for c in range(50):
+
+  client.publish("testtopic1",str("r"))
+
+  # model.set_weights(population[c])
+  start_time = time.time()
+  start_point=[]
+  fitness=[]
+
+  while len(start_point)<10 :    
+
+       #msg receive code
+      def on_message(client, userdata, message):
+          msg= str(message.payload.decode("utf-8"))
+          if len(msg) >5:
+              # print("Distance: ", msg)
+              string_value =msg
+              list_value = string_value.split(',')
+              int_list = [int(float(x)) for x in list_value]
+              send = network(population[c],[int_list])
+              print("RayCode: ", int_list)
+              client.publish("testtopic1",str(send))
+              # client.publish("testtopic",str(send))
+
+          else:
+              print("Position: ", msg)
+              start_point.append(int(msg))
+              
+      client.on_message = on_message
+      # print("waiting for msg ")
+      client.loop()
+
+  print(f"Fitness Function {fitness} ")
+  print(start_point[-1]-start_point[0])
+  result_dict[start_point[-1]-start_point[0]] = population[c]
+
+#   skorted list 
+  sorted_dic = sorted(result_dict.items(), key=lambda x: x[0], reverse=True)
+  for key, value in sorted_dic:
+        print(f'key - {key}')
+        new_gen.append(value)
+        fitness.append(key)
+        with open('file.txt', 'a') as file:
+          file.write(str(key))
+          file.write('\n')
+
+  for _ in range(10): 
+      parent1 = random.choice(population[:50])
+      parent2 = random.choice(population[:50])
+      child = mate(parent1,parent2)
+      new_gen.append(child)
+
+
+  population= new_gen 
+
+  print(f" Generation :  {c}")
+  with open('file.txt', 'a') as file:
+      file.write('Generation : ')
+      file.write(str(c))
+      file.write('\n\n')  
+
+
+  client.publish("testtopic1",str(f'{c},{round(mean(fitness),2)}' ))
